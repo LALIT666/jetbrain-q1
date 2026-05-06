@@ -1,8 +1,10 @@
 package com.example.uitest
 
+import com.intellij.driver.client.Remote
 import com.intellij.driver.sdk.ui.components.UiComponent
 import com.intellij.driver.sdk.ui.components.UiComponent.Companion.waitFound
 import com.intellij.driver.sdk.ui.components.common.ideFrame
+import com.intellij.driver.sdk.ui.ui
 import com.intellij.ide.starter.driver.engine.runIdeWithDriver
 import com.intellij.ide.starter.ide.IdeProductProvider
 import com.intellij.ide.starter.junit5.hyphenateWithClass
@@ -12,9 +14,13 @@ import com.intellij.ide.starter.runner.CurrentTestMethod
 import com.intellij.ide.starter.runner.Starter
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import java.awt.event.KeyEvent
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
+
+@Remote("javax.swing.AbstractButton")
+interface RemoteAbstractButton {
+    fun doClick()
+}
 
 class ChangelistsSettingsTest {
 
@@ -25,8 +31,8 @@ class ChangelistsSettingsTest {
             TestCase(
                 IdeProductProvider.IC,
                 GitHubProject.fromGithub(
-                    branchName = "master",
-                    repoRelativeUrl = "JetBrains/kotlin-examples.git"
+                    branchName = "main",
+                    repoRelativeUrl = "JetBrains/intellij-sdk-code-samples.git"
                 )
             ).useRelease()
         ).prepareProjectCleanImport()
@@ -34,70 +40,60 @@ class ChangelistsSettingsTest {
         testContext.runIdeWithDriver().useDriverAndCloseIde {
             ideFrame {
                 waitForIndicators(5.minutes)
+                openSettingsDialog()
+            }
 
-                val isMac = System.getProperty("os.name").lowercase().contains("mac")
-                keyboard {
-                    if (isMac) {
-                        hotKey(KeyEvent.VK_META, KeyEvent.VK_COMMA)
-                    } else {
-                        hotKey(KeyEvent.VK_CONTROL, KeyEvent.VK_ALT, KeyEvent.VK_S)
-                    }
-                }
+            Thread.sleep(3000)
 
-                Thread.sleep(2000)
-
-                x("//div[@text='Version Control']", UiComponent::class.java)
-                    .waitFound(30.seconds)
-                    .click()
-
+            // Settings search
+            ui.keyboard {
+                typeText("Create changelists automatically")
                 Thread.sleep(1000)
+                enter()
+            }
 
-                x("//div[@text='Changelists']", UiComponent::class.java)
-                    .waitFound(20.seconds)
-                    .click()
+            Thread.sleep(3000)
 
-                Thread.sleep(1500)
+            val checkboxXpath =
+                "//div[@class='JCheckBox' and contains(@text, 'Create changelists automatically')]"
+            val selectedCheckboxXpath =
+                "//div[@class='JCheckBox' and contains(@text, 'Create changelists automatically') and @selected='true']"
 
-                val checkboxXpath =
-                    "//div[@class='JCheckBox' and contains(@text, 'Create changelists automatically')]"
+            val checkbox = ui.x(checkboxXpath, UiComponent::class.java)
+                .waitFound(20.seconds)
 
-                val selectedCheckboxXpath =
-                    "//div[@class='JCheckBox' and contains(@text, 'Create changelists automatically') and @selected='true']"
+            val alreadySelected = try {
+                ui.x(selectedCheckboxXpath, UiComponent::class.java)
+                    .waitFound(2.seconds)
+                true
+            } catch (_: Throwable) {
+                false
+            }
 
-                val checkbox = x(checkboxXpath, UiComponent::class.java)
-                    .waitFound(20.seconds)
-
-                val alreadySelected = try {
-                    x(selectedCheckboxXpath, UiComponent::class.java)
-                        .waitFound(2.seconds)
-                    true
-                } catch (_: Throwable) {
-                    false
-                }
-
-                if (!alreadySelected) {
-                    checkbox.click()
-                    Thread.sleep(500)
-                }
-
-                val finalSelected = try {
-                    x(selectedCheckboxXpath, UiComponent::class.java)
-                        .waitFound(10.seconds)
-                    true
-                } catch (_: Throwable) {
-                    false
-                }
-
-                assertTrue(finalSelected) {
-                    "'Create changelists automatically' checkbox should be selected"
-                }
-
-                x("//div[@class='JButton' and @text='OK']", UiComponent::class.java)
-                    .waitFound(10.seconds)
-                    .click()
-
+            if (!alreadySelected) {
+                val remoteCheckbox = this.cast(checkbox.component, RemoteAbstractButton::class)
+                remoteCheckbox.doClick()
                 Thread.sleep(1000)
             }
+
+            val finalSelected = try {
+                ui.x(selectedCheckboxXpath, UiComponent::class.java)
+                    .waitFound(10.seconds)
+                true
+            } catch (_: Throwable) {
+                false
+            }
+
+            assertTrue(finalSelected) {
+                "'Create changelists automatically' checkbox should be selected"
+            }
+
+            val okButton = ui.x("//div[@class='JButton' and @text='OK']", UiComponent::class.java)
+                .waitFound(10.seconds)
+            val remoteOkButton = this.cast(okButton.component, RemoteAbstractButton::class)
+            remoteOkButton.doClick()
+
+            Thread.sleep(2000)
         }
     }
 }
